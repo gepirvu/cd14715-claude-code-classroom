@@ -58,6 +58,52 @@ Your SaaS company receives 5,000+ support tickets daily across email, chat, and 
 
 ## Option B: Multi-Agent Approach (Recommended)
 
+##: 1
+Agent: Triage
+Single purpose: Entry point. Classifies urgency, type (technical, billing, or general), and complexity. Looks up customer
+tier and sets the SLA deadline.
+Tools: CRM lookup, ticket system (read)
+Model: Haiku
+Runs: First, sequential
+────────────────────────────────────────
+#: 2
+Agent: Technical
+Single purpose: Diagnoses technical issues, forms a root-cause hypothesis, and drafts a fix or next step.
+Tools: Logs/monitoring, status page, product docs, ticket history
+Model: Sonnet
+Runs: Parallel, only if the ticket is technical
+────────────────────────────────────────
+#: 3
+Agent: Billing
+Single purpose: Checks invoices, payments, sublity against policy.
+Tools: Billing/payments API (read-only), policy docs
+Model: Haiku
+Runs: Parallel, only if the ticket is billing-related
+────────────────────────────────────────
+#: 4
+Agent: Knowledge Base
+Single purpose: Finds similar solved tickets and relevant articles, and drafts a candidate reply with a confidence score.
+Tools: KB semantic search, resolved-ticket sea
+Model: Haiku
+Runs: Parallel, always
+────────────────────────────────────────
+#: 5
+Agent: Routing
+Single purpose: Merges everything from agents ecides the final destination and writes a
+context summary for any human.
+Tools: Ticket system (write), team queues, email/chat send
+Model: Sonnet
+Runs: After the parallel stage
+────────────────────────────────────────
+#: 6
+Agent: Escalation
+Single purpose: Background SLA monitor. Every kets and escalates when time remaining drops
+below a threshold.
+Tools: Ticket system, Slack/email alerts
+Model: Haiku
+Runs: Independent, scheduled
+
+
 <!-- TODO: Design your multi-agent architecture here -->
 
 <!--
@@ -81,14 +127,18 @@ INSTRUCTIONS:
 
 ### Agent Definitions
 
-<!-- TODO: Complete this table with your agent designs -->
-
 | Agent | Responsibility | Tools | Model | Parallel? |
 |-------|---------------|-------|-------|-----------|
-| TODO | TODO | TODO | TODO | TODO |
-| TODO | TODO | TODO | TODO | TODO |
-| TODO | TODO | TODO | TODO | TODO |
-| TODO | TODO | TODO | TODO | TODO |
+| Triage | Entry point. Classifies urgency, type (technical, billing, general) and complexity; looks up customer tier and sets the SLA deadline | CRM lookup, Ticket System (read) | Haiku | No. Runs first, sequential |
+| Technical | Diagnoses technical issues, forms a root-cause hypothesis and drafts a fix or next step | Logs/monitoring, status page, product docs, ticket history | Sonnet | Yes. Only if the ticket is technical |
+| Billing | Checks invoices, payments, subscription and refund eligibility against policy | Billing/payments API (read-only), policy docs | Haiku | Yes. Only if the ticket is billing-related |
+| Knowledge Base | Finds similar solved tickets and relevant articles; drafts a candidate reply with a confidence score | KB semantic search, resolved-ticket search | Haiku | Yes. Always runs |
+| Routing | Merges all agent output with customer tier and SLA, decides the final destination and writes a context summary for humans | Ticket System (write), team queues, email/chat send | Sonnet | No. Runs after the parallel stage |
+| Escalation | Background SLA monitor. Checks open tickets every ~5 minutes and escalates when time remaining is low | Ticket System, Slack/email alerts | Haiku | Independent. Scheduled background job |
+
+**Orchestration pattern:** Triage runs first, then Technical, Billing and Knowledge Base run in parallel (Technical and Billing only when relevant, so a mixed ticket can trigger both), then Routing merges the results and picks a destination. Escalation runs separately on a schedule.
+
+**Destinations:** Auto-response (~40%), Human Team (~55%) and Escalation (~5%).
 
 <!--
 HINTS:
@@ -102,16 +152,35 @@ HINTS:
 
 ### Pros
 
-<!-- TODO: List advantages of multi-agent approach -->
+- **Meets the enterprise SLA**: Technical, Billing and Knowledge Base run in parallel, so latency is that of the slowest agent, not the sum of all three
+- **Better quality per task type**: each agent has one focused prompt and its own tools instead of one crowded context
+- **Lower cost**: Haiku handles high-volume simple work (Triage, Billing, KB, Escalation); Sonnet is used only for Technical and Routing
+- **Scales to 5,000+ tickets/day**: tickets are independent, and each agent type can be scaled separately
+- **Auditable decisions**: only the Routing agent decides, and each specialist leaves a clear output, giving an audit trail
+- **Easy to extend**: a new agent (e.g. Security or Account Access) plugs into the parallel stage without rewriting the others
+- **Independent SLA safety net**: the Escalation agent runs on its own schedule, so a slow or failed pipeline can't stop SLA breaches from being caught
+- **Isolated failures and testing**: if one specialist times out, Routing can still decide with what it has, and each agent can be tested on its own
+- **Human handoff with context**: Routing writes a summary so the human team doesn't start from scratch
 
 ### Cons
 
-<!-- TODO: List disadvantages of multi-agent approach -->
+- **Coordination complexity**: more moving parts (parallel stage, merge logic, retries) than a single agent
+- **More API calls per ticket**: up to four model calls plus background checks, so higher token cost and more rate-limit pressure
+- **Merge and conflict handling**: Routing must reconcile overlapping or contradictory outputs from Technical, Billing and KB
+- **Harder debugging**: a wrong decision can come from any agent or from the merge, so tracing needs per-agent logging
+- **Context loss between agents**: each specialist sees only what Triage passes on, so a weak Triage result degrades everything after it
+- **Single points of failure**: Triage and Routing are mandatory, so an outage in either stops the whole pipeline
+- **Misclassification risk**: a wrong type from Triage can skip the right specialist (e.g. a billing issue missed)
+- **Upfront effort**: more prompts, tools and integrations to build, test and maintain
 
 ### Estimated Performance
 
-<!-- TODO: Provide performance estimates -->
-<!-- Consider: processing time, daily capacity, SLA compliance -->
+- Processing time: 15-25 seconds per ticket (Triage ~3s, parallel stage ~10-15s limited by the slowest agent, Routing ~3-5s)
+- Daily capacity: 5,000+ tickets (parallel pipelines, scales horizontally)
+- Auto-resolution rate: ~40% handled by auto-response
+- SLA compliance: ~95% (enterprise tickets prioritized, Escalation agent as safety net)
+
+*Estimates based on typical model latencies; to be validated with load testing.*
 
 ---
 
@@ -197,15 +266,16 @@ INSTRUCTIONS:
 
 ## Failure Mode Analysis
 
-<!-- TODO: Complete the failure mode analysis table -->
-
 | Failure | Impact | Mitigation |
 |---------|--------|------------|
-| TODO | TODO | TODO |
-| TODO | TODO | TODO |
-| TODO | TODO | TODO |
-| TODO | TODO | TODO |
-| TODO | TODO | TODO |
+| Triage Agent down | No ticket gets a type, tier or SLA deadline, so the whole pipeline stops | Queue incoming tickets and retry; run multiple Triage instances; fall back to rule-based keyword classification, and send unclassified tickets to the L1 queue; alert on-call |
+| Technical Agent slow or times out | Routing waits on the slowest agent, delaying technical tickets and risking the SLA | Per-agent timeout (e.g. 20 s); Routing proceeds without the analysis and routes to the Engineering queue with a "technical analysis missing" flag |
+| Knowledge Base search fails | No auto-response candidate, so more tickets fall to human teams | Treat as zero confidence and skip auto-response; retry once; alert when the failure rate rises; humans handle the tickets with a normal context summary |
+| CRM unavailable | Customer tier and history are unknown, so SLA and priority can't be set correctly | Cache recent customer records; if the cache misses, use the conservative default of treating the ticket as enterprise, and re-check once the CRM recovers |
+| Escalation Agent crashes | SLA breaches go unnoticed, especially for enterprise tickets | Watchdog heartbeat that restarts the agent; a simple non-AI SLA timer as backup; alert on a missed run (no heartbeat for 10 minutes) |
+| Routing Agent fails or makes a wrong decision | Tickets are stuck or sent to the wrong team | Retry then default to the L1 human queue; allow human re-routing; log every decision for audit and review; sample tickets to track the 95% accuracy target |
+| API rate limits or model outage | All agents slow down or fail, so the SLA is missed at volume | Retry with exponential backoff; request queue and rate limiting; prioritize enterprise tickets; fall back to a secondary model or provider; degrade to human-only routing |
+| Network issues between components | Lost or delayed messages between agents, tools and ticket system | Durable message queue with retries and idempotent handling; timeouts; health checks and alerts; no ticket is dropped, so it is replayed after recovery |
 
 <!--
 HINTS - Consider these failure scenarios:
@@ -226,37 +296,31 @@ For each, think about:
 
 ## Recommendation
 
-<!-- TODO: Choose Option A or Option B and justify your decision -->
+**Choose Option B (Multi-Agent) because:**
 
-**Choose Option [A or B] because:**
+1. **Volume**: 5,000+ tickets/day exceeds the single agent's ~2,500/day capacity. Independent tickets and parallel pipelines let the multi-agent design scale horizontally.
+2. **Speed**: the 1-hour enterprise SLA needs fast turnaround. Running Technical, Billing and Knowledge Base in parallel cuts processing to 15-25 seconds per ticket, versus 30-60 seconds sequentially, and lifts SLA compliance from ~70% to ~95%.
+3. **Specialization**: technical and billing tickets need different tools and expertise. Focused agents give better quality than one agent with a crowded context.
+4. **Scalability**: new agent types (e.g. Security) plug into the parallel stage, and each agent type can be scaled on its own.
+5. **Cost vs benefit**: Haiku handles the high-volume simple work and Sonnet only the reasoning-heavy steps. The extra model calls are offset by ~40% auto-resolution, which removes work from human teams.
 
-<!-- TODO: Provide 3-5 reasons based on:
-- Volume requirements (5,000+ tickets/day)
-- Speed requirements (1-hour enterprise SLA)
-- Specialization needs (technical vs billing expertise)
-- Scalability (easy to add new agent types?)
-- Cost vs benefit trade-offs
--->
+The added complexity (coordination, debugging, mandatory Triage and Routing) is manageable with per-agent logging, timeouts and the fallbacks in the Failure Mode Analysis.
 
 ### Estimated Performance
 
-<!-- TODO: Provide specific performance estimates for your chosen approach -->
-
-- Processing time: TODO seconds per ticket
-- Daily capacity: TODO tickets
-- Auto-resolution rate: TODO%
-- SLA compliance: TODO%
+- Processing time: 15-25 seconds per ticket
+- Daily capacity: 5,000+ tickets
+- Auto-resolution rate: ~40%
+- SLA compliance: ~95%
 
 ---
 
 ## Key Takeaways
 
-<!-- TODO: Write 3-4 key learnings from this architecture exercise -->
+1. **Parallelism beats a single agent when work is independent** - Technical, Billing and Knowledge Base analyses don't depend on each other, so running them together turns a sum of latencies into the slowest one and makes the 1-hour SLA reachable.
 
-1. **TODO** - Your first key takeaway
+2. **One purpose per agent** - Focused agents with their own tools and prompts are easier to build, test and improve than one agent doing everything, and they allow cheaper models where the task is simple.
 
-2. **TODO** - Your second key takeaway
+3. **Match the model to the task** - Haiku for classification, lookups and monitoring; Sonnet for diagnosis and final routing. Cost and speed follow from this choice.
 
-3. **TODO** - Your third key takeaway
-
-4. **TODO** - Your fourth key takeaway (optional)
+4. **Design for failure from the start** - Every agent and integration can fail, so timeouts, safe defaults (route to a human), fallbacks and an independent SLA watchdog matter as much as the happy path.

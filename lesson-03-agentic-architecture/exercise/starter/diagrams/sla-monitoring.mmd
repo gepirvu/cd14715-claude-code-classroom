@@ -1,15 +1,25 @@
-%% TODO: Design the background SLA monitoring / escalation agent
-%%
-%% Your diagram should describe an agent that:
-%% - Runs on a regular schedule (how often?)
-%% - Queries open tickets and checks time remaining vs SLA deadline
-%% - Alerts the team lead when a ticket is close to breaching SLA
-%% - Escalates to a manager and logs a compliance violation when SLA is breached
-%%
-%% Include: run frequency, escalation thresholds, tools used, model choice
-%% Tip: use a warning/alert color for the node style
-%%      see demo/diagrams/sla-monitoring.mmd for color and syntax examples
-%% Render with: mmdc -i diagrams/sla-monitoring.mmd -o diagrams/sla-monitoring.svg
-
 graph TB
-    %% Define your escalation agent node here
+    Scheduler(["<b>Scheduler</b><br/>Runs every 5 minutes"])
+
+    Agent["<b>ESCALATION AGENT</b> (Haiku)<br/><br/><b>Tools:</b><br/>- Ticket System (read / update)<br/>- Slack / Email alerts<br/><br/><b>Does:</b><br/>1. Query all open tickets<br/>2. Compare time remaining vs SLA deadline<br/>3. Apply escalation thresholds"]
+
+    OK["<b>On track</b><br/>More than 20% of SLA time left<br/>No action"]
+    AtRisk["<b>SLA at risk</b><br/>20% or less time left<br/>Alert team lead (Slack)<br/>Flag ticket as priority"]
+    Breached["<b>SLA breached</b><br/>Deadline passed<br/>Escalate to manager (Email + Slack)<br/>Log compliance violation"]
+
+    Audit["<b>Audit Trail</b><br/>Every check and action logged"]
+
+    Scheduler --> Agent
+    Agent --> OK
+    Agent --> AtRisk
+    Agent --> Breached
+    OK -.-> Audit
+    AtRisk -.-> Audit
+    Breached -.-> Audit
+
+    style Scheduler fill:#e3f2fd,stroke:#333,stroke-width:2px
+    style Agent fill:#ffebee,stroke:#c62828,stroke-width:3px
+    style OK fill:#c8e6c9,stroke:#333,stroke-width:2px
+    style AtRisk fill:#fff9c4,stroke:#333,stroke-width:2px
+    style Breached fill:#ffcdd2,stroke:#c62828,stroke-width:2px
+    style Audit fill:#f3e5f5,stroke:#333,stroke-width:2px

@@ -1,16 +1,40 @@
-%% TODO: Design your multi-agent architecture
-%%
-%% Your diagram should show:
-%% - An incoming ticket entry point
-%% - A Triage Agent that categorizes tickets and determines urgency, type, and customer tier
-%% - 3 specialized agents running in parallel (Technical, Billing, Knowledge Base)
-%% - A Routing Agent that evaluates all analysis and decides the final destination
-%% - 3 destinations: Auto-response (~40%), Human Team (~55%), Escalation (~5%)
-%%
-%% For each agent, label: name, key tools, model (Haiku or Sonnet), and what it handles
-%% Tip: use style statements to color-code different agent types
-%%      see demo/diagrams/multi-agent.mmd for color examples and Mermaid syntax
-%% Render with: mmdc -i diagrams/multi-agent.mmd -o diagrams/multi-agent.svg
-
 graph TB
-    %% Add your nodes and connections here
+    Ticket(["<b>Incoming Ticket</b><br/>Email / Chat / Web form"])
+
+    Triage["<b>Triage Agent</b> (Haiku)<br/><br/><b>Tools:</b><br/>- CRM lookup<br/>- Ticket System (read)<br/><br/><b>Does:</b><br/>- Urgency, type, complexity<br/>- Customer tier<br/>- Sets SLA deadline"]
+
+    Technical["<b>Technical Agent</b> (Sonnet)<br/><br/><b>Tools:</b><br/>- Logs / monitoring<br/>- Status page<br/>- Product docs<br/><br/><b>Does:</b><br/>- Root-cause hypothesis<br/>- Drafts fix<br/><i>Only if technical</i>"]
+    Billing["<b>Billing Agent</b> (Haiku)<br/><br/><b>Tools:</b><br/>- Billing API (read-only)<br/>- Policy docs<br/><br/><b>Does:</b><br/>- Invoices, payments<br/>- Refund eligibility<br/><i>Only if billing</i>"]
+    KB["<b>Knowledge Base Agent</b> (Haiku)<br/><br/><b>Tools:</b><br/>- KB semantic search<br/>- Resolved tickets<br/><br/><b>Does:</b><br/>- Similar solved issues<br/>- Draft reply + confidence<br/><i>Always runs</i>"]
+
+    Routing["<b>Routing Agent</b> (Sonnet)<br/><br/><b>Tools:</b><br/>- Ticket System (write)<br/>- Team queues<br/>- Email / chat send<br/><br/><b>Does:</b><br/>- Merges all analysis<br/>- Picks final destination<br/>- Writes context summary"]
+
+    Auto["<b>Auto-response</b><br/>~40%"]
+    Human["<b>Human Team</b><br/>~55%<br/>Engineering / Finance / L1"]
+    Escalate["<b>Escalation</b><br/>~5%<br/>Team lead / manager"]
+
+    SLA["<b>Escalation Agent</b> (Haiku)<br/><br/><b>Tools:</b><br/>- Ticket System<br/>- Slack / email alerts<br/><br/><b>Does:</b><br/>- Background SLA monitor<br/>- Runs every ~5 min<br/>- Alerts when time is low"]
+
+    Ticket --> Triage
+    Triage -.->|parallel| Technical
+    Triage -.->|parallel| Billing
+    Triage -.->|parallel| KB
+    Technical --> Routing
+    Billing --> Routing
+    KB --> Routing
+    Routing --> Auto
+    Routing --> Human
+    Routing --> Escalate
+    SLA -.->|monitors open tickets| Routing
+    SLA -.->|SLA at risk| Escalate
+
+    style Ticket fill:#e3f2fd,stroke:#333,stroke-width:2px
+    style Triage fill:#fff4e6,stroke:#333,stroke-width:2px
+    style Technical fill:#e8f5e9,stroke:#333,stroke-width:2px
+    style Billing fill:#e8f5e9,stroke:#333,stroke-width:2px
+    style KB fill:#e8f5e9,stroke:#333,stroke-width:2px
+    style Routing fill:#fff9c4,stroke:#333,stroke-width:2px
+    style SLA fill:#ffebee,stroke:#333,stroke-width:2px
+    style Auto fill:#f3e5f5,stroke:#333,stroke-width:2px
+    style Human fill:#f3e5f5,stroke:#333,stroke-width:2px
+    style Escalate fill:#f3e5f5,stroke:#333,stroke-width:2px

@@ -1,19 +1,59 @@
-%% TODO: Create a sequence diagram showing the interaction timeline between components
-%%
-%% Your diagram should include participants for:
-%% - Customer, Ticket System, Triage Agent, CRM, the 3 specialized agents,
-%%   Routing Agent, and Destination
-%%
-%% The sequence should show:
-%% - The CRM lookup that happens at triage time
-%% - A 'par' block for the 3 specialized agents working simultaneously
-%% - All agents reporting results back to the Routing Agent
-%% - Conditional routing outcomes using 'alt' / 'else' blocks
-%% - A note about the background SLA escalation agent
-%%
-%% Tip: use 'activate' / 'deactivate' to show when each agent is actively working
-%%      see demo/diagrams/sequence.mmd for sequenceDiagram syntax examples
-%% Render with: mmdc -i diagrams/sequence.mmd -o diagrams/sequence.svg
-
 sequenceDiagram
-    %% Define your actors/participants and show the interaction flow
+    actor Customer
+    participant System as Ticket System
+    participant Triage as Triage Agent
+    participant CRM
+    participant Tech as Technical Agent
+    participant Bill as Billing Agent
+    participant KB as Knowledge Base Agent
+    participant Route as Routing Agent
+    participant Dest as Destination
+
+    Customer->>System: Submit support ticket
+    System->>Triage: New ticket event
+    activate Triage
+
+    Triage->>CRM: Look up customer
+    CRM-->>Triage: Tier and history
+
+    Note over Triage: Classify urgency and type,<br/>set SLA deadline by tier
+
+    par Parallel analysis
+        Triage->>Tech: Analyze (if technical)
+        activate Tech
+        Tech->>Tech: Check logs, status page, docs
+        Tech-->>Route: Technical analysis
+        deactivate Tech
+    and
+        Triage->>Bill: Analyze (if billing)
+        activate Bill
+        Bill->>Bill: Check invoices, payments, policy
+        Bill-->>Route: Billing analysis
+        deactivate Bill
+    and
+        Triage->>KB: Search knowledge base (always)
+        activate KB
+        KB->>KB: Find similar solved tickets
+        KB-->>Route: Matches and confidence
+        deactivate KB
+    end
+
+    deactivate Triage
+    activate Route
+
+    Note over Route: Merge results with tier,<br/>urgency and SLA
+
+    alt High KB confidence, not critical
+        Route->>Dest: Auto-response (~40%)
+        Dest-->>Customer: Solution from KB
+    else Urgent or SLA at risk
+        Route->>Dest: Escalate to team lead (~5%)
+        Note over Dest: Priority handling<br/>with full context
+    else Standard case
+        Route->>Dest: Route to human team (~55%)
+        Note over Dest: Engineering / Finance / L1<br/>with context summary
+    end
+
+    deactivate Route
+
+    Note over Customer,Dest: SLA monitored in the background<br/>by the Escalation Agent (every ~5 min)

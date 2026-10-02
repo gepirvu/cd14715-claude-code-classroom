@@ -1,16 +1,34 @@
-%% TODO: Create a detailed workflow diagram showing the ticket journey from start to finish
-%%
-%% Your diagram should show:
-%% - START: New ticket received
-%% - TRIAGE: Agent categorizes ticket, looks up customer in CRM, sets SLA deadline by tier
-%% - PARALLEL execution: 3 specialized agents running simultaneously
-%% - ROUTING: Decision logic based on KB confidence, ticket type, urgency, and customer tier
-%% - DESTINATIONS: Auto-response, Human Team, Escalation
-%%
-%% Tip: use flowchart TD (top-down) syntax
-%%      use dashed arrows -.-> to represent parallel execution paths
-%%      see demo/diagrams/workflow.mmd for Mermaid syntax examples
-%% Render with: mmdc -i diagrams/workflow.mmd -o diagrams/workflow.svg
-
 flowchart TD
-    %% Add your workflow steps and connections here
+    Start(["<b>START</b><br/>New ticket received"])
+    Triage["<b>TRIAGE AGENT</b><br/><br/>1. Read ticket content<br/>2. Look up customer in CRM<br/>3. Determine urgency, type, tier<br/>4. Set SLA deadline by tier"]
+
+    Tech["<b>Technical Agent</b><br/>(if technical)"]
+    Billing["<b>Billing Agent</b><br/>(if billing)"]
+    KB["<b>Knowledge Base Agent</b><br/>(always)"]
+
+    Routing["<b>ROUTING AGENT</b><br/><br/><b>Decision logic:</b><br/>IF KB confidence is high AND not critical<br/>→ AUTO-RESPOND<br/>ELSE IF urgent OR enterprise at SLA risk<br/>→ ESCALATE<br/>ELSE<br/>→ HUMAN TEAM with context"]
+
+    Auto["<b>AUTO-RESPONSE</b><br/>KB answer or auto-fix<br/>(~40%)"]
+    Human["<b>HUMAN TEAM</b><br/>Engineering / Finance / L1<br/>(~55%)"]
+    Escalate["<b>ESCALATION</b><br/>Team lead / manager alert<br/>(~5%)"]
+
+    Start --> Triage
+    Triage -.->|parallel| Tech
+    Triage -.->|parallel| Billing
+    Triage -.->|parallel| KB
+    Tech --> Routing
+    Billing --> Routing
+    KB --> Routing
+    Routing --> Auto
+    Routing --> Human
+    Routing --> Escalate
+
+    style Start fill:#e3f2fd,stroke:#333,stroke-width:2px
+    style Triage fill:#fff4e6,stroke:#333,stroke-width:2px
+    style Tech fill:#e8f5e9,stroke:#333,stroke-width:2px
+    style Billing fill:#e8f5e9,stroke:#333,stroke-width:2px
+    style KB fill:#e8f5e9,stroke:#333,stroke-width:2px
+    style Routing fill:#fff9c4,stroke:#333,stroke-width:2px
+    style Auto fill:#c8e6c9,stroke:#333,stroke-width:2px
+    style Human fill:#c8e6c9,stroke:#333,stroke-width:2px
+    style Escalate fill:#ffcdd2,stroke:#333,stroke-width:2px
